@@ -21,6 +21,15 @@ class Tenant extends Model
     public const ROLE_ADMIN = 'ADMIN';
     public const ROLE_TENANT = 'TENANT';
 
+    public function toArray()
+    {
+        $array = parent::toArray();
+        $array['doorNumber'] = $array['door_number'] ?? null;
+        $array['previousUnits'] = $array['previous_units'] ?? 0;
+        unset($array['door_number'], $array['previous_units']);
+        return $array;
+    }
+
     public function units(): HasMany
     {
         return $this->hasMany(Unit::class);

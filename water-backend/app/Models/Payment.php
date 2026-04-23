@@ -20,6 +20,14 @@ class Payment extends Model
         'payment_date' => 'date'
     ];
 
+    public function toArray()
+    {
+        $array = parent::toArray();
+        $array['date'] = $array['payment_date'] ?? null; // Spring boot exposed this as 'date'
+        unset($array['payment_date']);
+        return $array;
+    }
+
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);

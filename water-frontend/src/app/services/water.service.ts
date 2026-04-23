@@ -6,10 +6,10 @@ import { Observable } from 'rxjs';
   providedIn: 'root'
 })
 export class WaterService {
-  private apiUrl = 'http://localhost:8081/api';
+  private apiUrl = 'http://localhost:8081/api/v1';
   private currentUserKey = 'aquaflow_user';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) { }
 
   register(name: string, phone: string): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/register`, { name, phone });

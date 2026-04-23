@@ -41,7 +41,7 @@ class WaterService
     public function getDashboardData($month)
     {
         $monthBill = Bill::where('month', $month)->first();
-        $totalBill = $monthBill ? $monthBill->totalBill : 0;
+        $totalBill = $monthBill ? $monthBill->total_bill : 0;
 
         $summary = $this->getTenantSummary($month);
         $totalTenantCost = collect($summary)->sum('cost');
@@ -75,8 +75,8 @@ class WaterService
         }
 
         $bill = Bill::firstOrNew(['month' => $month]);
-        $bill->totalBill = $totalBill;
-        $bill->totalUnits = $totalUnits;
+        $bill->total_bill = $totalBill;
+        $bill->total_units = $totalUnits;
         $bill->save();
 
         return $bill;
@@ -121,7 +121,7 @@ class WaterService
         $summary = [];
         
         foreach ($tenants as $tenant) {
-            $prevUnits = $tenant->previousUnits ?? 0;
+            $prevUnits = $tenant->previous_units ?? 0;
             
             $currentUnitObj = $currentUnitsList->get($tenant->id);
             $currentReading = $currentUnitObj ? $currentUnitObj->units : $prevUnits;
@@ -138,7 +138,7 @@ class WaterService
                 'tenantId'      => $tenant->id,
                 'name'          => $tenant->name,
                 'phone'         => $tenant->phone,
-                'doorNumber'    => $tenant->doorNumber,
+                'doorNumber'    => $tenant->door_number,
                 'previousUnits' => $prevUnits,
                 'units'         => $currentReading,
                 'billUnit'      => $unitsConsumed,
@@ -162,8 +162,8 @@ class WaterService
         $tenant->name = $name;
         $tenant->phone = $phone;
         $tenant->role = $role ?? Tenant::ROLE_TENANT;
-        $tenant->previousUnits = $previousUnits ?? 0;
-        $tenant->doorNumber = $doorNumber;
+        $tenant->previous_units = $previousUnits ?? 0;
+        $tenant->door_number = $doorNumber;
         $tenant->save();
 
         return $tenant;
@@ -175,8 +175,8 @@ class WaterService
         $tenant->name = $name;
         $tenant->phone = $phone;
         $tenant->role = $role ?? Tenant::ROLE_TENANT;
-        $tenant->previousUnits = $previousUnits ?? 0;
-        $tenant->doorNumber = $doorNumber;
+        $tenant->previous_units = $previousUnits ?? 0;
+        $tenant->door_number = $doorNumber;
         $tenant->save();
 
         return $tenant;
@@ -195,7 +195,7 @@ class WaterService
     public function updateTenantBaseline($id, $previousUnits)
     {
         $tenant = Tenant::findOrFail($id);
-        $tenant->previousUnits = $previousUnits ?? 0;
+        $tenant->previous_units = $previousUnits ?? 0;
         $tenant->save();
 
         return $tenant;
