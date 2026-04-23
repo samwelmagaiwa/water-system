@@ -1,6 +1,6 @@
 package com.water.water_system.config;
 
-import com.water.water_system.model.Tenant;
+import com.water.water_system.entity.Tenant;
 import com.water.water_system.repository.TenantRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;

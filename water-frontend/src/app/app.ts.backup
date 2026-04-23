@@ -1,0 +1,659 @@
+import { Component, ViewChild, signal, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DashboardComponent } from './components/dashboard/dashboard.component';
+import { TenantsListComponent } from './components/tenants-list/tenants-list.component';
+import { AddUnitsFormComponent } from './components/add-units-form/add-units-form.component';
+import { PaymentFormComponent } from './components/payment-form/payment-form.component';
+import { LoginComponent } from './components/login/login.component';
+import { AdminPanelComponent } from './components/admin-panel/admin-panel.component';
+import { SetBillFormComponent } from './components/set-bill-form/set-bill-form.component';
+import { WaterService } from './services/water.service';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [CommonModule, DashboardComponent, TenantsListComponent, AddUnitsFormComponent, PaymentFormComponent, LoginComponent, AdminPanelComponent, SetBillFormComponent],
+  template: `
+    @if (!isLoggedIn()) {
+      <app-login (loggedIn)="onLogin($event)"></app-login>
+    } @else {
+      <div class="app-wrapper">
+        <header class="app-header">
+          <div class="water-drops">
+            <div class="drop drop-1"></div>
+            <div class="drop drop-2"></div>
+            <div class="drop drop-3"></div>
+            <div class="drop drop-4"></div>
+          </div>
+          <div class="header-content">
+            <div class="left-section">
+              <button class="menu-btn" (click)="toggleMobileMenu()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="3" y1="6" x2="21" y2="6"></line>
+                  <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+              </button>
+              <div class="brand">
+                <div class="brand-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/>
+                  </svg>
+                </div>
+                <div class="brand-text">
+                  <h1>AquaFlow</h1>
+                  <span>Water Management</span>
+                </div>
+              </div>
+            </div>
+            <div class="right-section">
+              <div class="user-info">
+                <div class="avatar">{{ currentUser()?.name?.charAt(0) || 'U' }}</div>
+                <div class="user-details">
+                  <span class="user-greet">Welcome</span>
+                  <span class="user-name">{{ currentUser()?.name }}</span>
+                </div>
+              </div>
+              <button class="logout-btn" (click)="logout()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main class="main-content">
+          <div class="content-grid" [class.has-sidebar]="!isAdmin()">
+            <section class="dashboard-section">
+              <app-dashboard #dashboard (monthChanged)="onMonthChange($event)"></app-dashboard>
+              <app-tenants-list #tenantsList [month]="currentMonth()" [showActions]="isAdmin()" (setBill)="showSetBillModal = true" (recordUsage)="showAddUnitsModal = true" (recordPayment)="showPaymentModal = true" (manageTenants)="showAdminPanelModal = true"></app-tenants-list>
+            </section>
+            
+            @if (!isAdmin()) {
+              <aside class="sidebar-section">
+                <div class="tenant-welcome-card">
+                  <div class="welcome-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/>
+                    </svg>
+                  </div>
+                  <h3>Welcome, {{ currentUser()?.name }}</h3>
+                  <p>Your water billing is managed by the admin.</p>
+                  <div class="tenant-info">
+                    <div class="info-item">
+                      <span class="label">Phone</span>
+                      <span class="value">{{ currentUser()?.phone }}</span>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            }
+          </div>
+        </main>
+
+        <footer class="app-footer">
+          <p>&copy; 2026 AquaFlow Water Management System</p>
+        </footer>
+      </div>
+
+      @if (mobileMenuOpen()) {
+        <div class="mobile-overlay" (click)="toggleMobileMenu()"></div>
+        <aside class="mobile-sidebar" [class.open]="mobileMenuOpen()">
+          <div class="sidebar-header">
+            <div class="sidebar-brand">
+              <div class="brand-icon-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/>
+                </svg>
+              </div>
+              <span>AquaFlow</span>
+            </div>
+            <button class="close-btn" (click)="toggleMobileMenu()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div class="sidebar-user">
+            <div class="user-avatar">{{ currentUser()?.name?.charAt(0) || 'U' }}</div>
+            <div class="user-info">
+              <span class="name">{{ currentUser()?.name }}</span>
+              <span class="role">{{ isAdmin() ? 'Administrator' : 'Tenant' }}</span>
+            </div>
+          </div>
+          <nav class="sidebar-nav">
+            <button class="nav-item" (click)="logout()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Logout
+            </button>
+          </nav>
+        </aside>
+      }
+
+      @if (showSetBillModal) {
+        <div class="modal-overlay" (click)="showSetBillModal = false">
+          <div class="modal-card" (click)="$event.stopPropagation()">
+            <button class="modal-close" (click)="showSetBillModal = false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <app-set-bill-form [currentUser]="currentUser()" (billSet)="onBillSet()"></app-set-bill-form>
+          </div>
+        </div>
+      }
+
+      @if (showAddUnitsModal) {
+        <div class="modal-overlay" (click)="showAddUnitsModal = false">
+          <div class="modal-card" (click)="$event.stopPropagation()">
+            <button class="modal-close" (click)="showAddUnitsModal = false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <app-add-units-form [currentUser]="currentUser()" (unitAdded)="onUnitAdded()"></app-add-units-form>
+          </div>
+        </div>
+      }
+
+      @if (showPaymentModal) {
+        <div class="modal-overlay" (click)="showPaymentModal = false">
+          <div class="modal-card modal-large" (click)="$event.stopPropagation()">
+            <button class="modal-close" (click)="showPaymentModal = false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <app-payment-form [currentUser]="currentUser()" (paymentAdded)="onPaymentAdded()"></app-payment-form>
+          </div>
+        </div>
+      }
+
+      @if (showAdminPanelModal) {
+        <div class="modal-overlay" (click)="showAdminPanelModal = false">
+          <div class="modal-card modal-large" (click)="$event.stopPropagation()">
+            <button class="modal-close" (click)="showAdminPanelModal = false">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <app-admin-panel [currentUser]="currentUser()" (tenantsChanged)="onTenantsChanged()"></app-admin-panel>
+          </div>
+        </div>
+      }
+    }
+  `,
+  styles: [`
+    :host { display: block; min-height: 100vh; }
+    .app-wrapper {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: #f8fafc;
+    }
+    .app-header {
+      position: relative;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 50%, #0c4a6e 100%);
+      color: white;
+      padding: 16px 24px;
+      overflow: hidden;
+    }
+    .water-drops { position: absolute; inset: 0; pointer-events: none; }
+    .drop {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.15;
+    }
+    .drop-1 { width: 400px; height: 400px; background: #0ea5e9; top: -150px; left: -100px; }
+    .drop-2 { width: 300px; height: 300px; background: #38bdf8; bottom: -100px; right: -50px; }
+    .drop-3 { width: 200px; height: 200px; background: #7dd3fc; top: 50%; left: 30%; }
+    .drop-4 { width: 150px; height: 150px; background: #bae6fd; bottom: 20%; right: 20%; opacity: 0.1; }
+    
+    .header-content {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 100%; /* Spans the entire width */
+      margin: 0 auto;
+    }
+    .left-section { display: flex; align-items: center; gap: 16px; }
+    .menu-btn {
+      display: none;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 10px;
+      width: 44px;
+      height: 44px;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: white;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 50px;
+      height: 50px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand-icon svg { width: 28px; height: 28px; color: #e0f2fe; }
+    .brand-text h1 { margin: 0; font-size: 1.4rem; font-weight: 700; }
+    .brand-text span { font-size: 0.75rem; color: #bae6fd; }
+    .right-section { display: flex; align-items: center; gap: 16px; }
+    .user-info { display: flex; align-items: center; gap: 12px; }
+    .avatar {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+    .user-details { display: flex; flex-direction: column; }
+    .user-greet { font-size: 0.75rem; color: #bae6fd; }
+    .user-name { font-weight: 600; font-size: 0.95rem; }
+    .logout-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 10px;
+      width: 42px;
+      height: 42px;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: white;
+      transition: background 0.2s;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.25); }
+    
+.main-content { 
+      flex: 1; 
+      padding: 32px; 
+      width: 100%; 
+      box-sizing: border-box; 
+    }
+    .content-grid { 
+      display: grid; 
+      grid-template-columns: 1fr 380px; 
+      gap: 28px; 
+      align-items: start; 
+    }
+    .content-grid.has-sidebar {
+      grid-template-columns: 1fr;
+    }
+    .content-grid { 
+      display: grid; 
+      grid-template-columns: 1fr; 
+      gap: 24px; 
+      align-items: start; 
+    }
+    .content-grid.has-sidebar { 
+      grid-template-columns: 1fr 380px; 
+    }
+    @media (max-width: 1200px) {
+      .content-grid.has-sidebar { grid-template-columns: 1fr; }
+      .sidebar-section { position: static; }
+    }
+    .dashboard-section { display: flex; flex-direction: column; gap: 24px; width: 100%; min-width: 0; }
+    .sidebar-section { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+    
+    .admin-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-radius: 12px;
+      color: white;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+    .tenant-welcome-card {
+      background: white;
+      border-radius: 20px;
+      padding: 32px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .welcome-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .welcome-icon svg { width: 40px; height: 40px; color: #0284c7; }
+    .tenant-welcome-card h3 { margin: 0 0 8px; color: #0f172a; font-size: 1.3rem; }
+    .tenant-welcome-card p { margin: 0 0 24px; color: #64748b; }
+    .tenant-info {
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .info-item { display: flex; justify-content: space-between; }
+    .info-item .label { color: #64748b; font-size: 0.9rem; }
+    .info-item .value { color: #0f172a; font-weight: 600; font-size: 0.9rem; }
+    
+    .app-footer { text-align: center; padding: 20px; color: #94a3b8; font-size: 0.85rem; }
+    
+    .mobile-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 90;
+    }
+    .mobile-sidebar {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 300px;
+      height: 100vh;
+      background: white;
+      z-index: 100;
+      flex-direction: column;
+    }
+    .mobile-sidebar.open { display: flex; }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: white;
+    }
+    .sidebar-brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon-sm {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand-icon-sm svg { width: 20px; height: 20px; }
+    .sidebar-brand span { font-weight: 700; font-size: 1.1rem; }
+    .close-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: white;
+    }
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 20px;
+      background: #f1f5f9;
+    }
+    .user-avatar {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+    .sidebar-user .name { display: block; font-weight: 600; color: #0f172a; }
+    .sidebar-user .role { display: block; font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+    .sidebar-nav { padding: 16px; flex: 1; }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 14px 16px;
+      background: #f1f5f9;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #334155;
+      cursor: pointer;
+      text-align: left;
+    }
+    .nav-item:hover { background: #e2e8f0; }
+    
+    @media (max-width: 1024px) {
+      .content-grid { grid-template-columns: 1fr; }
+      .sidebar-section { position: static; }
+      .menu-btn { display: flex; }
+      .right-section { display: none; }
+      .mobile-overlay { display: block; }
+    }
+    @media (max-width: 768px) {
+      .app-header { padding: 12px 16px; }
+      .brand-icon { width: 42px; height: 42px; }
+      .brand-icon svg { width: 24px; height: 24px; }
+      .brand-text h1 { font-size: 1.2rem; }
+      .brand-text span { display: none; }
+      .main-content { padding: 16px; }
+    }
+    @media (max-width: 600px) {
+      .content-grid { gap: 16px; }
+      .dashboard-section, .sidebar-section { gap: 16px; }
+      .tenant-welcome-card { padding: 24px; }
+    }
+
+    .action-buttons-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: white;
+    }
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .bill-btn {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+    .usage-btn {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    }
+    .payment-btn {
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 20px;
+    }
+    .modal-card {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-card.modal-large {
+      max-width: 700px;
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: #f1f5f9;
+      border: none;
+      border-radius: 10px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+    .modal-close:hover {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    @media (max-width: 768px) {
+      .modal-card {
+        max-width: 100%;
+        margin: 0 16px;
+        padding: 20px;
+      }
+      .modal-card.modal-large {
+        max-width: 100%;
+        margin: 0 12px;
+        padding: 16px;
+      }
+      .modal-overlay {
+        padding: 12px;
+        align-items: flex-end;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .modal-card {
+        border-radius: 16px 16px 0 0;
+        max-height: 85vh;
+      }
+      .modal-close {
+        top: 12px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+      }
+    }
+  \`]
+})
+export class AppComponent implements OnInit {
+  @ViewChild('dashboard') dashboard!: DashboardComponent;
+  @ViewChild('tenantsList') tenantsList!: TenantsListComponent;
+  
+  currentMonth = signal('March');
+  isLoggedIn = signal(false);
+  currentUser = signal<any>(null);
+  isAdmin = signal(false);
+  mobileMenuOpen = signal(false);
+  showSetBillModal = false;
+  showAddUnitsModal = false;
+  showPaymentModal = false;
+  showAdminPanelModal = false;
+
+  constructor(private waterService: WaterService) {}
+
+  onBillSet() {
+    this.showSetBillModal = false;
+    this.refreshData();
+  }
+
+  onUnitAdded() {
+    this.showAddUnitsModal = false;
+    this.refreshData();
+  }
+
+  onPaymentAdded() {
+    this.showPaymentModal = false;
+    this.refreshData();
+  }
+
+  onTenantsChanged() {
+    this.showAdminPanelModal = false;
+    this.refreshData();
+  }
+
+  ngOnInit() {
+    const user = this.waterService.getCurrentUserFromStorage();
+    if (user) {
+      this.currentUser.set(user);
+      this.isLoggedIn.set(true);
+      this.isAdmin.set(this.checkIsAdmin(user.phone));
+    }
+  }
+
+  checkIsAdmin(phone: string | undefined | null): boolean {
+    if (!phone) return false;
+    const adminPhones = ['2557000000', '0617919104'];
+    return adminPhones.some(prefix => phone.startsWith(prefix));
+  }
+
+  onLogin(user: any) {
+    this.currentUser.set(user);
+    this.isLoggedIn.set(true);
+    this.isAdmin.set(this.checkIsAdmin(user.phone));
+  }
+
+  logout() {
+    this.waterService.clearCurrentUser();
+    this.isLoggedIn.set(false);
+    this.currentUser.set(null);
+    this.isAdmin.set(false);
+    this.mobileMenuOpen.set(false);
+  }
+
+  toggleMobileMenu() {
+    this.mobileMenuOpen.update(v => !v);
+  }
+
+  onMonthChange(month: string) {
+    this.currentMonth.set(month);
+    this.tenantsList.loadDataForMonth(month);
+  }
+
+  refreshData() {
+    this.dashboard.loadData();
+    this.tenantsList.loadDataForMonth(this.currentMonth());
+  }
+}

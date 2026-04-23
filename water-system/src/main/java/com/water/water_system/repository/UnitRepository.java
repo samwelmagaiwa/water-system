@@ -1,6 +1,6 @@
 package com.water.water_system.repository;
 
-import com.water.water_system.model.Unit;
+import com.water.water_system.entity.Unit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

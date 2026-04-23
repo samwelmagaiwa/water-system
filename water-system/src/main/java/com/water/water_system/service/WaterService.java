@@ -1,24 +1,28 @@
 package com.water.water_system.service;
 
-import com.water.water_system.model.Bill;
-import com.water.water_system.model.Tenant;
-import com.water.water_system.model.Unit;
-import com.water.water_system.model.Payment;
+import com.water.water_system.entity.Bill;
+import com.water.water_system.entity.Tenant;
+import com.water.water_system.entity.Unit;
+import com.water.water_system.entity.Payment;
 import com.water.water_system.repository.BillRepository;
 import com.water.water_system.repository.TenantRepository;
 import com.water.water_system.repository.UnitRepository;
 import com.water.water_system.repository.PaymentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
+@Transactional
 public class WaterService {
 
     @Autowired
@@ -39,169 +43,242 @@ public class WaterService {
         return tenantRepository.findAll();
     }
 
+    /**
+     * Record water units for a tenant in a specific month.
+     */
     public Unit addUnits(Long tenantId, String month, Integer units) {
+        if (units == null || units < 0) throw new IllegalArgumentException("Units cannot be negative");
+        
         Tenant tenant = tenantRepository.findById(tenantId)
-                .orElseThrow(() -> new RuntimeException("Tenant not found"));
+                .orElseThrow(() -> new RuntimeException("Tenant not found with ID: " + tenantId));
 
-        Optional<Unit> existingUnit = unitRepository.findByTenantIdAndMonth(tenantId, month);
-        Unit unit;
-        if (existingUnit.isPresent()) {
-            unit = existingUnit.get();
-            unit.setUnits(units);
-        } else {
-            unit = new Unit();
-            unit.setTenant(tenant);
-            unit.setMonth(month);
-            unit.setUnits(units);
-        }
+        Unit unit = unitRepository.findByTenantIdAndMonth(tenantId, month)
+                .orElse(new Unit());
+        
+        unit.setTenant(tenant);
+        unit.setMonth(month);
+        unit.setUnits(units);
+        
         return unitRepository.save(unit);
     }
 
-    public Map<String, Object> getDashboardData(String month) {
-        Optional<Bill> billOpt = billRepository.findByMonth(month);
-        BigDecimal totalBill = billOpt.map(Bill::getTotalBill).orElse(BigDecimal.ZERO);
+     /**
+      * Get overall dashboard data for a specific month.
+      */
+     public Map<String, Object> getDashboardData(String month) {
+         BigDecimal totalBill = billRepository.findByMonth(month)
+                 .map(bill -> bill.getTotalBill()).orElse(BigDecimal.ZERO);
 
-        List<Unit> unitsForMonth = unitRepository.findByMonth(month);
-        BigDecimal totalContributions = unitsForMonth.stream()
-                .map(unit -> UNIT_PRICE.multiply(new BigDecimal(unit.getUnits())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+         // Total cost charged to tenants (sum of all individual bills)
+         List<Map<String, Object>> summary = getTenantSummary(month);
+         BigDecimal totalTenantCost = summary.stream()
+                 .map(m -> (BigDecimal) m.getOrDefault("cost", BigDecimal.ZERO))
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal remainingDebt = totalBill.subtract(totalContributions);
+         // Profit/Loss Margin (What we collect vs What we owe DAWASA)
+         BigDecimal margin = totalTenantCost.subtract(totalBill);
 
-        Map<String, Object> dashboard = new HashMap<>();
-        dashboard.put("month", month);
-        dashboard.put("totalBill", totalBill);
-        dashboard.put("totalContributions", totalContributions);
-        dashboard.put("remainingDebt", remainingDebt);
-        
-        double paidPercentage = 0;
-        if (totalBill.compareTo(BigDecimal.ZERO) > 0) {
-            paidPercentage = totalContributions.multiply(new BigDecimal("100"))
-                    .divide(totalBill, 2, BigDecimal.ROUND_HALF_UP).doubleValue();
-        }
-        dashboard.put("paidPercentage", paidPercentage);
+         // Actual collected amount from payments
+         List<Payment> paymentsForMonth = paymentRepository.findByMonth(month);
+         BigDecimal totalCollected = paymentsForMonth.stream()
+                 .map(payment -> payment.getAmount())
+                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        return dashboard;
-    }
-    
-    public List<Map<String, Object>> getTenantUsage(String month) {
-        List<Tenant> tenants = tenantRepository.findAll();
-        List<Unit> units = unitRepository.findByMonth(month);
-        
-        return tenants.stream().map(tenant -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("tenantId", tenant.getId());
-            map.put("name", tenant.getName());
+         // Outstanding is based on what tenants still owe us
+         BigDecimal outstanding = totalTenantCost.subtract(totalCollected);
+
+         Map<String, Object> dashboard = new HashMap<>();
+         dashboard.put("month", month);
+         dashboard.put("totalBill", totalBill);
+         dashboard.put("totalTenantCost", totalTenantCost);
+         dashboard.put("margin", margin);
+         dashboard.put("collected", totalCollected);
+         dashboard.put("outstanding", outstanding);
+         
+         BigDecimal paidPercentage = BigDecimal.ZERO;
+         if (totalTenantCost.compareTo(BigDecimal.ZERO) > 0) {
+             paidPercentage = totalCollected.multiply(new BigDecimal("100"))
+                     .divide(totalTenantCost, 2, RoundingMode.HALF_UP);
+          }
+          dashboard.put("paidPercentage", paidPercentage);
+ 
+          return dashboard;
+      }
+
+    /**
+     * Set the total water bill for the entire house for a specific month.
+     */
+    public Bill setBill(String month, BigDecimal totalBill, Integer totalUnits) {
+        if (totalBill == null || totalBill.compareTo(BigDecimal.ZERO) < 0) 
+            throw new IllegalArgumentException("Bill amount cannot be negative");
             
-            Optional<Unit> unitOpt = units.stream()
-                    .filter(u -> u.getTenant().getId().equals(tenant.getId()))
-                    .findFirst();
-            
-            int unitsConsumed = unitOpt.map(Unit::getUnits).orElse(0);
-            map.put("units", unitsConsumed);
-            map.put("cost", UNIT_PRICE.multiply(new BigDecimal(unitsConsumed)));
-            return map;
-        }).toList();
-    }
-
-    public void setBill(String month, BigDecimal totalBill) {
         Bill bill = billRepository.findByMonth(month).orElse(new Bill());
         bill.setMonth(month);
         bill.setTotalBill(totalBill);
-        billRepository.save(bill);
+        bill.setTotalUnits(totalUnits);
+        return billRepository.save(bill);
     }
 
+    /**
+     * Get all payments recorded for a specific month.
+     */
     public List<Payment> getPaymentsByMonth(String month) {
-        return paymentRepository.findAll().stream()
-                .filter(p -> p.getDate() != null && p.getDate().getMonth().name().equalsIgnoreCase(month))
-                .toList();
+        return paymentRepository.findByMonth(month);
     }
 
-    public Payment addPayment(Long tenantId, BigDecimal amount) {
+    /**
+     * Record or update a payment for a tenant for a specific billing month.
+     * If a payment already exists for this tenant and month, it updates the amount (fixing errors).
+     */
+    /**
+     * Record or update a payment for a tenant for a specific billing month.
+     * This replaces all existing payments for the month with a single new total (fixing errors).
+     */
+    public Payment addPayment(Long tenantId, String month, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) 
+            throw new IllegalArgumentException("Payment amount cannot be negative");
+            
         Tenant tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new RuntimeException("Tenant not found"));
+        
+        // Definitively clear any existing payments for this month before saving the new one
+        paymentRepository.deleteByTenantIdAndMonth(tenantId, month);
+        
         Payment payment = new Payment();
         payment.setTenant(tenant);
+        payment.setMonth(month);
         payment.setAmount(amount);
         payment.setDate(LocalDate.now());
         return paymentRepository.save(payment);
     }
 
+    /**
+     * Get a comprehensive summary of all tenants, their usage, and payment status for a month.
+     */
     public List<Map<String, Object>> getTenantSummary(String month) {
         List<Tenant> tenants = tenantRepository.findAll();
-        List<Unit> units = unitRepository.findByMonth(month);
+        List<Unit> currentUnits = unitRepository.findByMonth(month);
+        List<Payment> payments = paymentRepository.findByMonth(month);
+        Bill monthBill = billRepository.findByMonth(month).orElse(null);
         
+        BigDecimal totalBillAmount = (monthBill != null) ? monthBill.getTotalBill() : BigDecimal.ZERO;
+        int totalUnitsConsumed = (monthBill != null && monthBill.getTotalUnits() != null) ? monthBill.getTotalUnits() : 0;
+        
+        BigDecimal finalPrice = new BigDecimal("1700");
         return tenants.stream().map(tenant -> {
             Map<String, Object> map = new HashMap<>();
             map.put("tenantId", tenant.getId());
             map.put("name", tenant.getName());
+            map.put("phone", tenant.getPhone());
+            map.put("doorNumber", tenant.getDoorNumber());
             
-            Optional<Unit> unitOpt = units.stream()
-                    .filter(u -> u.getTenant().getId().equals(tenant.getId()))
-                    .findFirst();
+            // Baseline from Tenant Profile
+            int prevUnits = tenant.getPreviousUnits() != null ? tenant.getPreviousUnits() : 0;
+            map.put("previousUnits", prevUnits);
+
+            // Current Reading (from Units table)
+            int currentReading = currentUnits.stream()
+                .filter(u -> u.getTenant().getId().equals(tenant.getId()))
+                .findFirst().map(Unit::getUnits).orElse(prevUnits); 
             
-            int unitsConsumed = unitOpt.map(Unit::getUnits).orElse(0);
-            BigDecimal cost = UNIT_PRICE.multiply(new BigDecimal(unitsConsumed));
-            map.put("units", unitsConsumed);
+            // Billable Usage = Current - Previous
+            int unitsConsumed = Math.max(0, currentReading - prevUnits);
+            
+            BigDecimal cost = finalPrice.multiply(new BigDecimal(unitsConsumed));
+            map.put("units", currentReading); 
+            map.put("billUnit", unitsConsumed); 
             map.put("cost", cost);
             
-            List<Payment> payments = paymentRepository.findAll().stream()
-                    .filter(p -> p.getTenant().getId().equals(tenant.getId()))
-                    .toList();
+            // Payments
             BigDecimal totalPaid = payments.stream()
-                    .map(Payment::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(p -> p.getTenant().getId().equals(tenant.getId()))
+                .map(Payment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            
             map.put("paid", totalPaid);
             map.put("due", cost.subtract(totalPaid));
-            map.put("status", totalPaid.compareTo(cost) >= 0 ? "PAID" : "PENDING");
+            map.put("status", totalPaid.compareTo(cost) >= 0 && cost.compareTo(BigDecimal.ZERO) > 0 ? "PAID" : "PENDING");
             
             return map;
-        }).toList();
+        }).collect(Collectors.toList());
     }
 
-public Tenant registerTenant(String name, String phone) {
-        Tenant.Role role = determineRole(phone);
-        return createTenant(name, phone, role);
-    }
-    
-    public boolean isAdmin(String phone) {
-        return determineRole(phone) == Tenant.Role.ADMIN;
-    }
-    
-    private Tenant.Role determineRole(String phone) {
-        if (phone != null && phone.startsWith("2557000000")) {
-            return Tenant.Role.ADMIN;
-        }
-        return Tenant.Role.TENANT;
+    private String getPreviousMonth(String month) {
+        List<String> months = List.of("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December");
+        int idx = months.indexOf(month);
+        if (idx <= 0) return months.get(11); // Loop back to Dec
+        return months.get(idx - 1);
     }
 
-    public Tenant createTenant(String name, String phone, Tenant.Role role) {
+    // --- Tenant Management ---
+
+    public Tenant createTenant(String name, String phone, Tenant.Role role, Integer previousUnits, String doorNumber) {
+        if (tenantRepository.findByPhone(phone).isPresent()) 
+            throw new RuntimeException("Tenant with this phone already exists");
+            
         Tenant tenant = new Tenant();
         tenant.setName(name);
         tenant.setPhone(phone);
-        tenant.setRole(role);
+        tenant.setRole(role != null ? role : Tenant.Role.TENANT);
+        tenant.setPreviousUnits(previousUnits != null ? previousUnits : 0);
+        tenant.setDoorNumber(doorNumber);
         return tenantRepository.save(tenant);
     }
 
-    public Tenant updateTenant(Long id, String name, String phone, Tenant.Role role) {
+    public Tenant updateTenant(Long id, String name, String phone, Tenant.Role role, Integer previousUnits, String doorNumber) {
         Tenant tenant = getTenantById(id);
         tenant.setName(name);
         tenant.setPhone(phone);
         tenant.setRole(role);
+        tenant.setPreviousUnits(previousUnits != null ? previousUnits : 0);
+        tenant.setDoorNumber(doorNumber);
         return tenantRepository.save(tenant);
     }
 
     public void deleteTenant(Long id) {
-        tenantRepository.deleteById(id);
+        Tenant tenant = getTenantById(id);
+        unitRepository.deleteAll(tenant.getUnits());
+        paymentRepository.deleteAll(tenant.getPayments());
+        tenantRepository.delete(tenant);
+    }
+
+    public Tenant updateTenantBaseline(Long id, Integer previousUnits) {
+        Tenant tenant = getTenantById(id);
+        tenant.setPreviousUnits(previousUnits != null ? previousUnits : 0);
+        return tenantRepository.save(tenant);
+    }
+
+    // --- Auth & Helper ---
+
+    public Tenant registerTenant(String name, String phone) {
+        Tenant.Role role = determineRole(phone);
+        return createTenant(name, phone, role, 0, null);
     }
 
     public Tenant loginByPhone(String phone) {
         return tenantRepository.findByPhone(phone)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("User not found with phone: " + phone));
     }
 
     public Tenant getTenantById(Long id) {
         return tenantRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Tenant not found"));
+    }
+
+    public boolean isAdmin(String phone) {
+        return determineRole(phone) == Tenant.Role.ADMIN;
+    }
+
+    private Tenant.Role determineRole(String phone) {
+        // Simple logic for admin seeding, can be moved to config
+        List<String> adminPhones = List.of("2557000000", "0617919104", "0700000001");
+        if (phone != null && adminPhones.stream().anyMatch(phone::contains)) {
+            return Tenant.Role.ADMIN;
+        }
+        return Tenant.Role.TENANT;
+    }
+
+    public List<Map<String, Object>> getTenantUsage(String month) {
+        return getTenantSummary(month); // Leverages the optimized summary logic
     }
 }

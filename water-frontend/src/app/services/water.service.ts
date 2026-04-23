@@ -56,15 +56,19 @@ export class WaterService {
     return this.http.post<any>(`${this.apiUrl}/units`, data);
   }
 
-  setBill(month: string, totalBill: number): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/bill`, { month, totalBill });
+  getTenantUnits(tenantId: number, month: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/tenant-units?tenantId=${tenantId}&month=${month}`);
+  }
+
+  setBill(month: string, totalBill: number, totalUnits: number | null): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/bill`, { month, totalBill, totalUnits });
   }
 
   getPayments(month: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/payments?month=${month}`);
   }
 
-  addPayment(data: { tenantId: number; amount: number }): Observable<any> {
+  addPayment(data: { tenantId: number; amount: number; month: string }): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/payments`, data);
   }
 
@@ -86,5 +90,9 @@ export class WaterService {
 
   deleteTenant(id: number): Observable<any> {
     return this.http.delete<any>(`${this.apiUrl}/tenants/${id}`);
+  }
+
+  updateBaseline(id: number, units: number): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/tenants/${id}/baseline`, { previousUnits: units });
   }
 }
